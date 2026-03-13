@@ -2,8 +2,8 @@ import openai
 import subprocess
 import requests
 import xmltodict
-
-WolframAlpha_Key = "{Wolfram_Key}"
+from openai import OpenAI
+WolframAlpha_Key = "E99LEWL4K2"
 key_pool = []
 f = open("keys.txt", "r")
 lines = f.readlines()
@@ -19,20 +19,33 @@ def web_chat(usr_msg, system_msg, temperature=0.3):
     while try_num < key_num:
         try_num += 1
         try:
-            openai.api_key = key_pool[try_num % key_num]
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages = [
+            # 1. 使用新版 Client 初始化方式，并配置 Base URL
+            # 如果你是直接用阿里云的 API Key，请使用下面的 base_url
+            # 如果你是用第三方中转，请把 base_url 换成中转商提供的
+            client = OpenAI(
+                api_key=key_pool[(try_num - 1) % key_num],
+                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1" # 阿里云通义千问兼容地址
+            )
+            
+            # 2. 发起请求
+            response = client.chat.completions.create(
+                model="qwen-plus",
+                messages=[
                     {"role": "system", "content": system_msg},
                     {"role": "user", "content": usr_msg},
                 ],
                 temperature=temperature,
                 max_tokens=1024,
             )
-            return response["choices"][0]["message"]["content"].strip()
-        except:
-            pass
-    raise Exception("API key exhausted")
+            
+            # 3. 使用新版语法解析返回结果 (用 . 而不是字典的 ["..."])
+            return response.choices[0].message.content.strip()
+            
+        except Exception as e:
+            # 💡 把错误打印出来，不要用 pass 吞掉！
+            print(f"尝试第 {try_num} 个 Key 时发生错误: {e}")
+            
+    raise Exception("API key exhausted 或网络请求彻底失败，请看上方的报错信息")
 
 
 # Use Text-Davinci-003 API provided by OpenAI
@@ -44,7 +57,7 @@ def davinci_api(message, current_key, temperature=0.3):
         try:
             openai.api_key = key_pool[(try_num+current_key) % key_num]
             response = openai.Completion.create(
-                model="text-davinci-003",
+                model="qwen-plus",
                 prompt=message,
                 temperature=temperature,
                 max_tokens=1024,
